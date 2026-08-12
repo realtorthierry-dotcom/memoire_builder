@@ -2,3 +2,4 @@ sounddevice
 numpy
 soundfile
 openai-whisper
+pyttsx3

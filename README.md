@@ -12,12 +12,21 @@ and is meant to be usable independently, without a technical helper.
 
 1. Pick what the memory is about (category) and what language you'll speak in
    (or leave both on their defaults).
-2. Optionally tap **Need an idea?** for a gentle prompt to talk about.
+2. Optionally tap **Need an idea?** for a gentle prompt to talk about — it's
+   both shown on screen and read aloud automatically.
 3. Tap **Start Recording**, speak, then tap **Stop Recording**.
 4. The app transcribes the recording locally (nothing is sent to the internet)
    and shows you the text. Fix anything that was misheard, or just save it as is.
 5. Saved memories show up under **My Memories**, where they can be reopened,
    edited, or deleted later.
+
+Conversation prompts and key status updates (recording started, listening,
+saved, and any errors) are read aloud automatically using the computer's
+built-in text-to-speech, in addition to being shown on screen. It defaults to
+the "Microsoft David" voice at a slower, easier-to-follow pace (120 words per
+minute, versus SAPI5's default of ~200) — adjust `DEFAULT_RATE` and
+`PREFERRED_VOICE_KEYWORDS` at the top of `app/speech.py` to change the pace
+or preferred voice.
 
 Speech-to-text runs entirely on this computer using [OpenAI's Whisper
 model](https://github.com/openai/whisper) — no account, API key, or ongoing

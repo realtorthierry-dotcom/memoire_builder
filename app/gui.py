@@ -6,6 +6,7 @@ from tkinter import messagebox
 
 from .prompts import CATEGORIES, random_prompt
 from .recorder import SAMPLE_RATE, AudioRecorder
+from .speech import Speaker
 from .storage import MemoryStore
 from .transcriber import LANGUAGE_CODES, Transcriber
 
@@ -37,6 +38,7 @@ class MemoireApp:
         self.recorder = AudioRecorder(SAMPLE_RATE)
         self.transcriber = Transcriber()
         self.store = MemoryStore()
+        self.speaker = Speaker()
 
         self.selected_category = tk.StringVar(value=CATEGORIES[0])
         self.selected_language = tk.StringVar(value="Auto-detect")
@@ -70,6 +72,7 @@ class MemoireApp:
         try:
             self.recorder.start()
         except Exception as exc:
+            self.speaker.say("There was a problem with the microphone.")
             messagebox.showerror("Microphone problem", f"Could not start recording:\n{exc}")
             return
         self.frames[RecordPage].on_recording_started()
@@ -78,6 +81,7 @@ class MemoireApp:
         audio = self.recorder.stop()
         if audio.size == 0:
             self.frames[RecordPage].on_show()
+            self.speaker.say("It looks like nothing was recorded. Please try again.")
             messagebox.showinfo("No audio", "It looks like nothing was recorded. Please try again.")
             return
         self.frames[RecordPage].on_recording_stopped()
@@ -96,6 +100,7 @@ class MemoireApp:
     def _on_transcribe_error(self, exc: Exception) -> None:
         self._pending_audio = None
         self.frames[RecordPage].on_show()
+        self.speaker.say("There was a problem understanding the recording.")
         messagebox.showerror("Transcription problem", str(exc))
 
     def _on_transcribed(self, text: str) -> None:
@@ -111,14 +116,17 @@ class MemoireApp:
         )
         self._pending_audio = None
         self.current_prompt.set("")
-        self.show(RecordPage)
+        self.show(RecordPage, status="Saved! Ready for your next memory.")
+        self.root.after(2500, lambda: self.frames[RecordPage].set_status("Ready", speak=False))
 
     def discard_pending_recording(self) -> None:
         self._pending_audio = None
         self.show(RecordPage)
 
     def new_prompt(self) -> None:
-        self.current_prompt.set(random_prompt(self.selected_category.get()))
+        prompt = random_prompt(self.selected_category.get())
+        self.current_prompt.set(prompt)
+        self.speaker.say(prompt)
 
 
 class RecordPage(tk.Frame):
@@ -216,19 +224,26 @@ class RecordPage(tk.Frame):
 
     def on_recording_started(self) -> None:
         self.record_button.config(text="⏹  Stop Recording", bg=STOP, activebackground=STOP)
-        self.status_label.config(text="Recording... speak naturally, take your time.")
+        self.set_status("Recording... speak naturally, take your time.")
 
     def on_recording_stopped(self) -> None:
         self.record_button.config(
             text="\U0001F3A4  Start Recording", bg=ACCENT, activebackground=ACCENT, state="disabled"
         )
-        self.status_label.config(text="Listening to what you said... this can take a minute.")
+        self.set_status("Listening to what you said... this can take a minute.")
 
-    def on_show(self) -> None:
+    def on_show(self, status: str | None = None) -> None:
         self.record_button.config(
             text="\U0001F3A4  Start Recording", bg=ACCENT, activebackground=ACCENT, state="normal"
         )
-        self.status_label.config(text="Ready")
+        # Only speak when arriving with an explicit message (e.g. "Saved!") —
+        # plain navigation back to this page shouldn't narrate "Ready" every time.
+        self.set_status(status or "Ready", speak=status is not None)
+
+    def set_status(self, text: str, speak: bool = True) -> None:
+        self.status_label.config(text=text)
+        if speak:
+            self.app.speaker.say(text)
 
 
 class ReviewPage(tk.Frame):
