@@ -4,6 +4,7 @@ import random
 
 CATEGORIES = [
     "General",
+    "Freeform",
     "Childhood",
     "Family",
     "Wartime Experiences",
@@ -20,6 +21,11 @@ _PROMPTS: dict[str, list[str]] = {
         "Is there a story from your life you've never told anyone?",
         "What's something you're proud of that most people don't know about?",
         "Describe a perfectly ordinary day from earlier in your life.",
+    ],
+    "Freeform": [
+        "Just say whatever comes to mind — there's no right place to start.",
+        "Talk about anything you're thinking about right now.",
+        "No topic in mind? That's alright — just start talking and see where it goes.",
     ],
     "Childhood": [
         "What was the house you grew up in like?",
