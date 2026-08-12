@@ -4,7 +4,12 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
-from .prompts import CATEGORIES, random_prompt
+from .prompts import (
+    category_from_option,
+    category_options,
+    random_prompt,
+    spoken_category_list,
+)
 from .recorder import SAMPLE_RATE, AudioRecorder
 from .speech import Speaker
 from .storage import MemoryStore
@@ -30,17 +35,23 @@ class MemoireApp:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("My Memoire")
+        self.root.title("My Memoires")
         self.root.configure(bg=BG)
         self.root.geometry("820x700")
         self.root.minsize(700, 600)
+        # Start maximized so nothing (like the Save button below the transcript)
+        # can end up clipped off the bottom on a smaller or unusual screen.
+        self.root.state("zoomed")
 
         self.recorder = AudioRecorder(SAMPLE_RATE)
         self.transcriber = Transcriber()
         self.store = MemoryStore()
         self.speaker = Speaker()
 
-        self.selected_category = tk.StringVar(value=CATEGORIES[0])
+        default_category_option = next(
+            option for option in category_options() if category_from_option(option) == "Freeform"
+        )
+        self.selected_category = tk.StringVar(value=default_category_option)
         self.selected_language = tk.StringVar(value="Auto-detect")
         self.current_prompt = tk.StringVar(value="")
 
@@ -69,6 +80,9 @@ class MemoireApp:
     # --- recording flow ----------------------------------------------------
 
     def start_recording(self) -> None:
+        # Cut off any category prompt or confirmation still being read aloud,
+        # so it doesn't keep talking over her while she's trying to record.
+        self.speaker.stop()
         try:
             self.recorder.start()
         except Exception as exc:
@@ -111,7 +125,7 @@ class MemoireApp:
             self._pending_audio,
             SAMPLE_RATE,
             transcript,
-            category=self.selected_category.get(),
+            category=category_from_option(self.selected_category.get()),
             language=self.selected_language.get(),
         )
         self._pending_audio = None
@@ -124,7 +138,7 @@ class MemoireApp:
         self.show(RecordPage)
 
     def new_prompt(self) -> None:
-        prompt = random_prompt(self.selected_category.get())
+        prompt = random_prompt(category_from_option(self.selected_category.get()))
         self.current_prompt.set(prompt)
         self.speaker.say(prompt)
 
@@ -136,7 +150,36 @@ class RecordPage(tk.Frame):
         super().__init__(parent, bg=BG)
         self.app = app
 
-        tk.Label(self, text="My Memoire", font=TITLE_FONT, bg=BG, fg=FG).pack(pady=(30, 5))
+        # Packed before everything else below, so these buttons always get
+        # their space at the bottom and can never be pushed off a shorter window.
+        bottom_buttons = tk.Frame(self, bg=BG)
+        bottom_buttons.pack(side="bottom", pady=20)
+
+        tk.Button(
+            bottom_buttons,
+            text="My Memories",
+            font=BODY_FONT,
+            command=lambda: app.show(MemoriesPage),
+            bg=BUTTON_BG,
+            fg=FG,
+            relief="flat",
+            padx=16,
+            pady=8,
+        ).grid(row=0, column=0, padx=10)
+
+        tk.Button(
+            bottom_buttons,
+            text="Exit",
+            font=BODY_FONT,
+            command=self._exit_app,
+            bg=BUTTON_BG,
+            fg=FG,
+            relief="flat",
+            padx=16,
+            pady=8,
+        ).grid(row=0, column=1, padx=10)
+
+        tk.Label(self, text="My Memoires", font=TITLE_FONT, bg=BG, fg=FG).pack(pady=(30, 5))
         tk.Label(
             self,
             text="Press the button below and start talking about your life.",
@@ -153,9 +196,9 @@ class RecordPage(tk.Frame):
         tk.Label(options, text="This memory is about:", font=SMALL_FONT, bg=BG, fg=FG).grid(
             row=0, column=0, sticky="e", padx=5, pady=5
         )
-        tk.OptionMenu(options, app.selected_category, *CATEGORIES).grid(
-            row=0, column=1, sticky="w", padx=5, pady=5
-        )
+        tk.OptionMenu(
+            options, app.selected_category, *category_options(), command=self._on_category_chosen
+        ).grid(row=0, column=1, sticky="w", padx=5, pady=5)
 
         tk.Label(options, text="Speaking in:", font=SMALL_FONT, bg=BG, fg=FG).grid(
             row=1, column=0, sticky="e", padx=5, pady=5
@@ -204,23 +247,19 @@ class RecordPage(tk.Frame):
         self.status_label = tk.Label(self, text="Ready", font=BODY_FONT, bg=BG, fg=MUTED)
         self.status_label.pack(pady=(10, 20))
 
-        tk.Button(
-            self,
-            text="My Memories",
-            font=BODY_FONT,
-            command=lambda: app.show(MemoriesPage),
-            bg=BUTTON_BG,
-            fg=FG,
-            relief="flat",
-            padx=16,
-            pady=8,
-        ).pack(side="bottom", pady=20)
-
     def _toggle(self) -> None:
         if not self.app.recorder.is_recording:
             self.app.start_recording()
         else:
             self.app.stop_recording()
+
+    def _on_category_chosen(self, selected_option: str) -> None:
+        category = category_from_option(selected_option)
+        self.set_status(f"You chose {category}. Start speaking whenever you're ready.")
+
+    def _exit_app(self) -> None:
+        if messagebox.askyesno("Exit", "Are you sure you want to exit My Memoires?"):
+            self.app.root.destroy()
 
     def on_recording_started(self) -> None:
         self.record_button.config(text="⏹  Stop Recording", bg=STOP, activebackground=STOP)
@@ -230,15 +269,18 @@ class RecordPage(tk.Frame):
         self.record_button.config(
             text="\U0001F3A4  Start Recording", bg=ACCENT, activebackground=ACCENT, state="disabled"
         )
-        self.set_status("Listening to what you said... this can take a minute.")
+        self.set_status("Listening to what you said... this can take a minute to transcribe to text.")
 
     def on_show(self, status: str | None = None) -> None:
         self.record_button.config(
             text="\U0001F3A4  Start Recording", bg=ACCENT, activebackground=ACCENT, state="normal"
         )
-        # Only speak when arriving with an explicit message (e.g. "Saved!") —
-        # plain navigation back to this page shouldn't narrate "Ready" every time.
+        # Only speak the status when arriving with an explicit message (e.g.
+        # "Saved!") — plain navigation back to this page shouldn't narrate
+        # "Ready" every time. The category prompt, however, is asked every
+        # time she's back at this screen ready to record again.
         self.set_status(status or "Ready", speak=status is not None)
+        self.app.speaker.say(spoken_category_list())
 
     def set_status(self, text: str, speak: bool = True) -> None:
         self.status_label.config(text=text)
@@ -262,23 +304,11 @@ class ReviewPage(tk.Frame):
             fg=MUTED,
         ).pack(pady=(0, 15))
 
-        text_frame = tk.Frame(self, bg=BG)
-        text_frame.pack(fill="both", expand=True, padx=30, pady=(0, 20))
-        scrollbar = tk.Scrollbar(text_frame)
-        scrollbar.pack(side="right", fill="y")
-        self.text = tk.Text(
-            text_frame,
-            wrap="word",
-            font=("Segoe UI", 15),
-            yscrollcommand=scrollbar.set,
-            padx=10,
-            pady=10,
-        )
-        self.text.pack(side="left", fill="both", expand=True)
-        scrollbar.config(command=self.text.yview)
-
+        # Packed (and anchored to the bottom) before the expanding text box
+        # below, so these buttons always get their space and can never be
+        # pushed off the bottom of a shorter window.
         button_row = tk.Frame(self, bg=BG)
-        button_row.pack(pady=(0, 30))
+        button_row.pack(side="bottom", pady=(10, 30))
 
         tk.Button(
             button_row,
@@ -306,6 +336,21 @@ class ReviewPage(tk.Frame):
             command=app.discard_pending_recording,
         ).grid(row=0, column=1, padx=10)
 
+        text_frame = tk.Frame(self, bg=BG)
+        text_frame.pack(fill="both", expand=True, padx=30, pady=(0, 20))
+        scrollbar = tk.Scrollbar(text_frame)
+        scrollbar.pack(side="right", fill="y")
+        self.text = tk.Text(
+            text_frame,
+            wrap="word",
+            font=("Segoe UI", 15),
+            yscrollcommand=scrollbar.set,
+            padx=10,
+            pady=10,
+        )
+        self.text.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=self.text.yview)
+
     def on_show(self, transcript: str = "") -> None:
         self.text.delete("1.0", tk.END)
         self.text.insert("1.0", transcript)
@@ -329,17 +374,8 @@ class MemoriesPage(tk.Frame):
 
         tk.Label(self, text="My Memories", font=HEADING_FONT, bg=BG, fg=FG).pack(pady=(25, 15))
 
-        list_frame = tk.Frame(self, bg=BG)
-        list_frame.pack(fill="both", expand=True, padx=30, pady=(0, 15))
-        scrollbar = tk.Scrollbar(list_frame)
-        scrollbar.pack(side="right", fill="y")
-        self.listbox = tk.Listbox(
-            list_frame, font=("Segoe UI", 14), yscrollcommand=scrollbar.set, activestyle="none"
-        )
-        self.listbox.pack(side="left", fill="both", expand=True)
-        self.listbox.bind("<Double-Button-1>", self._open_selected)
-        scrollbar.config(command=self.listbox.yview)
-
+        # Packed before the expanding list below, so Back always gets its
+        # space and can never be pushed off the bottom of a shorter window.
         tk.Button(
             self,
             text="Back",
@@ -351,6 +387,17 @@ class MemoriesPage(tk.Frame):
             padx=16,
             pady=8,
         ).pack(side="bottom", pady=20)
+
+        list_frame = tk.Frame(self, bg=BG)
+        list_frame.pack(fill="both", expand=True, padx=30, pady=(0, 15))
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side="right", fill="y")
+        self.listbox = tk.Listbox(
+            list_frame, font=("Segoe UI", 14), yscrollcommand=scrollbar.set, activestyle="none"
+        )
+        self.listbox.pack(side="left", fill="both", expand=True)
+        self.listbox.bind("<Double-Button-1>", self._open_selected)
+        scrollbar.config(command=self.listbox.yview)
 
     def on_show(self) -> None:
         self.refresh()

@@ -1,27 +1,21 @@
 from __future__ import annotations
 
 import random
+import string
 
 CATEGORIES = [
-    "General",
     "Freeform",
     "Childhood",
-    "Family",
     "Wartime Experiences",
-    "Career & Work",
     "Love & Marriage",
-    "Challenges & Lessons Learned",
+    "Career & Work",
+    "Family",
     "Travel & Adventures",
+    "Challenges & Lessons Learned",
     "Advice for Future Generations",
 ]
 
 _PROMPTS: dict[str, list[str]] = {
-    "General": [
-        "What's a memory that always makes you smile?",
-        "Is there a story from your life you've never told anyone?",
-        "What's something you're proud of that most people don't know about?",
-        "Describe a perfectly ordinary day from earlier in your life.",
-    ],
     "Freeform": [
         "Just say whatever comes to mind — there's no right place to start.",
         "Talk about anything you're thinking about right now.",
@@ -83,8 +77,32 @@ _PROMPTS: dict[str, list[str]] = {
 
 
 def prompts_for(category: str) -> list[str]:
-    return _PROMPTS.get(category, _PROMPTS["General"])
+    return _PROMPTS.get(category, _PROMPTS["Freeform"])
 
 
 def random_prompt(category: str) -> str:
     return random.choice(prompts_for(category))
+
+
+def lettered_categories() -> list[tuple[str, str]]:
+    """Categories paired with A, B, C... labels, in curated (not alphabetical)
+    order for easier listening and selection than a long unbroken list."""
+    return list(zip(string.ascii_uppercase, CATEGORIES))
+
+
+def category_options() -> list[str]:
+    """Display strings like 'A. Childhood', in curated order."""
+    return [f"{letter}. {category}" for letter, category in lettered_categories()]
+
+
+def category_from_option(option: str) -> str:
+    """Recovers the plain category name from a 'A. Childhood'-style display string."""
+    return option.split(". ", 1)[1]
+
+
+def spoken_category_list() -> str:
+    """A spoken-friendly listing of every category with its letter, for reading aloud."""
+    lines = [
+        f"{letter}, {category.replace('&', 'and')}" for letter, category in lettered_categories()
+    ]
+    return "What would you like to talk about? " + ". ".join(lines) + "."
